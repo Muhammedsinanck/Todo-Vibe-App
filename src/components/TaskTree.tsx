@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { ChevronRight, Plus } from 'lucide-react';
 import { startOfDay, endOfDay, isBefore, isAfter, format } from 'date-fns';
 import { TaskRow } from './TaskRow';
@@ -66,12 +66,44 @@ const buildStrictTreeFromMatch = (allTasks: Task[], matchFn: (t: Task) => boolea
     return roots;
 };
 
-export const TaskTree: React.FC<Props> = ({ tasks, isInbox, isFocusMode, searchQuery = '', onClearSearch, selectedTaskId, setSelectedTaskId }) => {
+export interface TaskTreeHandle {
+    addRootTask: () => Promise<void>;
+}
+
+export const TaskTree = forwardRef<TaskTreeHandle, Props>(({
+    tasks,
+    isInbox,
+    isFocusMode,
+    searchQuery = '',
+    onClearSearch,
+    selectedTaskId,
+    setSelectedTaskId
+}, ref) => {
     const [openIds, setOpenIds] = useState<Set<string>>(new Set(['group-past', 'group-today', 'group-upcoming', 'group-nodate']));
     const [autoFocusId, setAutoFocusId] = useState<string | null>(null);
     const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [dropPosition, setDropPosition] = useState<'before' | 'after' | 'inside' | null>(null);
+
+    useImperativeHandle(ref, () => ({
+        addRootTask: async () => {
+            const newTask = await actions.addTask('', 'root', [], null, -1);
+            const newId = newTask.id;
+
+            // If we are in inbox but not searching, open nodate and focus
+            if (isInbox && !searchQuery) {
+                setOpenIds(prev => {
+                    const next = new Set(prev);
+                    next.add('group-nodate');
+                    return next;
+                });
+                setAutoFocusId(`group-nodate_${newId}`);
+            } else {
+                setAutoFocusId(newId);
+            }
+            setSelectedTaskId(newId);
+        }
+    }));
 
     // Global KeyDown for Task Deletion
     useEffect(() => {
@@ -445,4 +477,4 @@ export const TaskTree: React.FC<Props> = ({ tasks, isInbox, isFocusMode, searchQ
             </button>
         </div>
     );
-};
+});

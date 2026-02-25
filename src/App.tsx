@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { history } from './db/history';
-import { TaskTree } from './components/TaskTree';
+import { TaskTree, type TaskTreeHandle } from './components/TaskTree';
 import { TaskDetailPanel } from './components/TaskDetailPanel';
 import { useTasks, type SectionFilter } from './db/hooks';
-import { ListTodo, Calendar, Clock, Archive, Search, Target } from 'lucide-react';
+import { ListTodo, Calendar, Clock, Archive, Search, Target, Plus } from 'lucide-react';
 import './index.css';
 
 function App() {
@@ -24,6 +24,7 @@ function App() {
     return saved ? parseInt(saved, 10) : 320; // default w-80 (320px)
   });
   const tasks = useTasks(filter, statusFilter);
+  const taskTreeRef = useRef<TaskTreeHandle>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -132,17 +133,26 @@ function App() {
               </div>
             </div>
 
-            <div className="relative max-w-xs w-full">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-theme-muted" />
+            <div className="flex items-center gap-3 w-full max-w-md justify-end">
+              <button
+                onClick={() => taskTreeRef.current?.addRootTask()}
+                className="flex items-center gap-2 px-4 py-2 bg-theme-accent hover:bg-theme-accent-hover text-white rounded-xl font-medium transition-colors shadow-sm whitespace-nowrap"
+              >
+                <Plus size={18} />
+                <span>Add Task</span>
+              </button>
+              <div className="relative max-w-xs w-full">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-theme-muted" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search tasks..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-theme-glass-border rounded-xl leading-5 bg-theme-input-bg backdrop-blur-sm placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-accent focus:border-transparent focus:bg-theme-glass-solid sm:text-sm transition-all shadow-sm text-theme-text"
+                />
               </div>
-              <input
-                type="text"
-                placeholder="Search tasks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-theme-glass-border rounded-xl leading-5 bg-theme-input-bg backdrop-blur-sm placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-theme-accent focus:border-transparent focus:bg-theme-glass-solid sm:text-sm transition-all shadow-sm text-theme-text"
-              />
             </div>
           </header>
 
@@ -154,6 +164,7 @@ function App() {
             ) : (
               <div className="flex-1 overflow-hidden">
                 <TaskTree
+                  ref={taskTreeRef}
                   tasks={tasks}
                   isInbox={filter === 'all'}
                   isFocusMode={filter === 'focus'}
