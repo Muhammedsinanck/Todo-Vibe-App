@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, Plus } from 'lucide-react';
-import { startOfDay, endOfDay, isBefore, isAfter } from 'date-fns';
+import { startOfDay, endOfDay, isBefore, isAfter, format } from 'date-fns';
 import { TaskRow } from './TaskRow';
 import { type Task } from '../db/db';
 import { actions } from '../db/actions';
@@ -8,7 +8,9 @@ import { actions } from '../db/actions';
 type Props = {
     tasks: Task[];
     isInbox?: boolean;
+    isFocusMode?: boolean;
     searchQuery?: string;
+    onClearSearch?: () => void;
     selectedTaskId: string | null;
     setSelectedTaskId: (id: string | null) => void;
 };
@@ -18,7 +20,53 @@ export type TreeNode = {
     children: TreeNode[];
 };
 
-export const TaskTree: React.FC<Props> = ({ tasks, isInbox, searchQuery = '', selectedTaskId, setSelectedTaskId }) => {
+// Removed generic tree builder in favor of strict filter
+
+const buildStrictTreeFromMatch = (allTasks: Task[], matchFn: (t: Task) => boolean): TreeNode[] => {
+    // 1. Identify true matches
+    const matchingIds = new Set<string>();
+    allTasks.forEach(task => {
+        if (matchFn(task)) matchingIds.add(task.id);
+    });
+
+    // 2. Keep ONLY true matches. Exclude ancestors that don't match.
+    const keptTasks = allTasks.filter(t => matchingIds.has(t.id));
+
+    const map = new Map<string, TreeNode>();
+    keptTasks.forEach(task => {
+        let parentId = task.parentId;
+        // If the task's parent isn't also a match, hoist it to the root of this section
+        if (!matchingIds.has(parentId)) {
+            parentId = 'root';
+        }
+        map.set(task.id, {
+            task: { ...task, parentId },
+            children: []
+        });
+    });
+
+    const roots: TreeNode[] = [];
+    map.forEach(node => {
+        if (node.task.parentId !== 'root' && map.has(node.task.parentId)) {
+            map.get(node.task.parentId)!.children.push(node);
+        } else {
+            roots.push(node);
+        }
+    });
+
+    // 3. Sort strictly: Root nodes sort by sectionOrder, children sort by original tree order
+    roots.sort((a, b) => (a.task.sectionOrder || 0) - (b.task.sectionOrder || 0));
+
+    const sortChildren = (nodes: TreeNode[]) => {
+        nodes.sort((a, b) => a.task.order - b.task.order);
+        nodes.forEach(n => sortChildren(n.children));
+    };
+    roots.forEach(r => sortChildren(r.children));
+
+    return roots;
+};
+
+export const TaskTree: React.FC<Props> = ({ tasks, isInbox, isFocusMode, searchQuery = '', onClearSearch, selectedTaskId, setSelectedTaskId }) => {
     const [openIds, setOpenIds] = useState<Set<string>>(new Set(['group-past', 'group-today', 'group-upcoming', 'group-nodate']));
     const [autoFocusId, setAutoFocusId] = useState<string | null>(null);
     const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -44,63 +92,44 @@ export const TaskTree: React.FC<Props> = ({ tasks, isInbox, searchQuery = '', se
 
     // Build the tree
     let rootNodes: TreeNode[] = [];
-    const nodeMap = new Map<string, TreeNode>();
 
-    // Apply Search Filtering first
-    let filteredTasks = tasks;
-    if (searchQuery) {
+    if (isFocusMode) {
+        // Pure flat mapping. No parent logic.
+        rootNodes = tasks.map(task => ({
+            task,
+            children: []
+        }));
+    } else if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchingIds = new Set<string>();
+        // Use strict matching so searching only returns individual matched items at root level
+        rootNodes = buildStrictTreeFromMatch(tasks, task =>
+            task.text.toLowerCase().includes(query) ||
+            (!!task.notes && task.notes.toLowerCase().includes(query)) ||
+            (!!task.tags && task.tags.some(tag => tag.toLowerCase().includes(query)))
+        );
+    } else {
+        // If not searching, just build standard full tree. 
+        // We can mimic buildTreeFromMatch with a simple loop since matchFn is always true.
+        const map = new Map<string, TreeNode>();
         tasks.forEach(task => {
-            if (task.text.toLowerCase().includes(query) ||
-                task.notes?.toLowerCase().includes(query) ||
-                task.tags?.some(tag => tag.toLowerCase().includes(query))) {
-                matchingIds.add(task.id);
+            map.set(task.id, { task, children: [] });
+        });
+
+        tasks.forEach(task => {
+            const node = map.get(task.id)!;
+            if (task.parentId !== 'root' && map.has(task.parentId)) {
+                map.get(task.parentId)!.children.push(node);
+            } else {
+                rootNodes.push(node);
             }
         });
 
-        const idsToKeep = new Set(matchingIds);
-        let addedNew = true;
-        while (addedNew) {
-            addedNew = false;
-            tasks.forEach(task => {
-                if (idsToKeep.has(task.id) && task.parentId !== 'root' && !idsToKeep.has(task.parentId)) {
-                    idsToKeep.add(task.parentId);
-                    addedNew = true;
-                }
-            });
-        }
-        filteredTasks = tasks.filter(t => idsToKeep.has(t.id));
+        const sortChildren = (nodes: TreeNode[]) => {
+            nodes.sort((a, b) => a.task.order - b.task.order);
+            nodes.forEach(n => sortChildren(n.children));
+        };
+        sortChildren(rootNodes);
     }
-
-    // 1. Initialize all nodes
-    filteredTasks.forEach(task => {
-        let parentId = task.parentId;
-        if (searchQuery && !filteredTasks.some(t => t.id === parentId)) {
-            parentId = 'root'; // Attach to root if parent is filtered out
-        }
-
-        nodeMap.set(task.id, {
-            task: { ...task, parentId }, // Temp override parentId for rendering
-            children: []
-        });
-    });
-
-    // 2. Build Hierarchy
-    nodeMap.forEach(node => {
-        if (node.task.parentId !== 'root' && nodeMap.has(node.task.parentId)) {
-            nodeMap.get(node.task.parentId)!.children.push(node);
-        } else {
-            rootNodes.push(node);
-        }
-    });
-
-    // 3. Sort children based on order
-    const sortNodes = (nodes: TreeNode[]) => {
-        nodes.sort((a, b) => a.task.order - b.task.order);
-        nodes.forEach(n => sortNodes(n.children));
-    };
-    sortNodes(rootNodes);
 
 
     // Grouping
@@ -117,19 +146,27 @@ export const TaskTree: React.FC<Props> = ({ tasks, isInbox, searchQuery = '', se
             return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
         };
 
-        rootNodes.forEach(node => {
-            if (!node.task.dueDate) {
-                groups.nodate.nodes.push(node);
-            } else {
-                const due = parseLocal(node.task.dueDate);
-                const todayEnd = endOfDay(new Date());
-                const todayStart = startOfDay(new Date());
+        const todayEnd = endOfDay(new Date());
+        const todayStart = startOfDay(new Date());
 
-                if (isBefore(due, todayStart)) groups.past.nodes.push(node);
-                else if (isAfter(due, todayEnd)) groups.upcoming.nodes.push(node);
-                else groups.today.nodes.push(node);
-            }
+        groups.past.nodes = buildStrictTreeFromMatch(tasks, t => {
+            if (!t.dueDate) return false;
+            return isBefore(parseLocal(t.dueDate), todayStart);
         });
+
+        groups.today.nodes = buildStrictTreeFromMatch(tasks, t => {
+            if (!t.dueDate) return false;
+            const due = parseLocal(t.dueDate);
+            return !isBefore(due, todayStart) && !isAfter(due, todayEnd);
+        });
+
+        groups.upcoming.nodes = buildStrictTreeFromMatch(tasks, t => {
+            if (!t.dueDate) return false;
+            return isAfter(parseLocal(t.dueDate), todayEnd);
+        });
+
+        groups.nodate.nodes = rootNodes;
+        groups.nodate.text = 'No Date / All';
     }
 
     const toggleOpen = (id: string) => {
@@ -139,6 +176,41 @@ export const TaskTree: React.FC<Props> = ({ tasks, isInbox, searchQuery = '', se
             else next.add(id);
             return next;
         });
+    };
+
+    const handleDoubleClickToAll = (targetTaskId: string) => {
+        if (!isInbox) return;
+
+        if (searchQuery && onClearSearch) {
+            onClearSearch();
+        }
+
+        setOpenIds(prev => {
+            const next = new Set(prev);
+            next.add('group-nodate');
+
+            let currentId = targetTaskId;
+            while (currentId && currentId !== 'root') {
+                next.add(currentId);
+                const taskObj = tasks.find(t => t.id === currentId);
+                currentId = taskObj?.parentId || 'root';
+            }
+            return next;
+        });
+
+        setSelectedTaskId(targetTaskId);
+
+        // Allow React to mount the expanded No Date nodes before scrolling
+        setTimeout(() => {
+            const domId = `task-row-group-nodate-${targetTaskId}`;
+            const el = document.getElementById(domId);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Optional highlight flash
+                el.classList.add('ring-2', 'ring-theme-accent', 'ring-offset-2', 'transition-all');
+                setTimeout(() => el.classList.remove('ring-2', 'ring-theme-accent', 'ring-offset-2'), 1000);
+            }
+        }, 150);
     };
 
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>, task: Task) => {
@@ -184,52 +256,121 @@ export const TaskTree: React.FC<Props> = ({ tasks, isInbox, searchQuery = '', se
 
         let newParentId = 'root';
         let dropIndex = 0;
+        let isSectionDrop = true; // Assume flat section drop unless it involves nodate tree
 
-        if (targetId.startsWith('group-')) {
-            newParentId = 'root';
-            // Just drop at the end of the group
+        let isFocusDrop = false;
+
+        if (isFocusMode) {
+            isFocusDrop = true;
+            // Target index is exactly the flat array index
+            dropIndex = tasks.findIndex(t => t.id === targetId);
+            if (dropIndex === -1) dropIndex = tasks.length;
+            else if (dropPosition === 'after') dropIndex++;
+        } else if (targetId.startsWith('group-')) {
             const groupKey = targetId.replace('group-', '');
-            const targetGroup = groups[groupKey];
-            if (targetGroup) {
-                // Approximate drop index logic - we'll just put it at 0 for now when dropping on a group header
-                dropIndex = 0;
+            // Dropping on the No-Date group header means putting at root bottom 
+            if (groupKey === 'nodate') {
+                isSectionDrop = false;
+                newParentId = 'root';
+                dropIndex = tasks.filter(t => t.parentId === 'root').length;
+            } else {
+                dropIndex = groups[groupKey]?.nodes?.length || 0;
             }
-            // If dragging to a group, update due date accordingly
+
+            // Update due date based on group target
             let newDueDate = draggedTask.dueDate;
-            if (targetId === 'group-today') newDueDate = new Date().toISOString();
+            if (targetId === 'group-today') newDueDate = format(new Date(), 'yyyy-MM-dd');
             else if (targetId === 'group-nodate') newDueDate = null;
 
             if (newDueDate !== draggedTask.dueDate) {
                 await actions.updateTask(draggedTaskId, { dueDate: newDueDate });
+                draggedTask = { ...draggedTask, dueDate: newDueDate }; // Local update for reorder reference
             }
         } else if (dropTargetId && dropPosition) {
             const targetTask = tasks.find(t => t.id === targetId);
             if (!targetTask) return;
 
-            if (dropPosition === 'inside') {
-                newParentId = targetId;
-                // Add to bottom of children
-                const children = tasks.filter(t => t.parentId === targetId);
-                dropIndex = children.length;
+            // Determine if we are interacting with the flat Date sections vs the hierarchical No-Date tree
+            // We can infer this by checking if the dropTargetId exists inside the nodate tree
+            const isInNoDateTree = (taskId: string): boolean => {
+                const checkNode = (nodes: TreeNode[]): boolean => {
+                    for (const n of nodes) {
+                        if (n.task.id === taskId) return true;
+                        if (checkNode(n.children)) return true;
+                    }
+                    return false;
+                };
+                return checkNode(groups.nodate.nodes);
+            };
+
+            isSectionDrop = !isInNoDateTree(targetId);
+
+            if (isSectionDrop) {
+                const targetDate = targetTask.dueDate;
+                const parseLocal = (dStr: string) => {
+                    const parts = dStr.split('-');
+                    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                };
+
+                // Determine flat drop index inside the current date's matching group.
+                // Because we strictly filtered the tree, we look only at the top-level nodes of the matched section
+                // to find our sectionOrder target index.
+                let targetSectionNodes: TreeNode[] = [];
+                if (!targetDate) {
+                    targetSectionNodes = [];
+                } else if (isBefore(parseLocal(targetDate), startOfDay(new Date()))) targetSectionNodes = groups.past.nodes;
+                else if (isAfter(parseLocal(targetDate), endOfDay(new Date()))) targetSectionNodes = groups.upcoming.nodes;
+                else targetSectionNodes = groups.today.nodes;
+
+                const targetIndex = targetSectionNodes.findIndex(n => n.task.id === targetId);
+
+                // Fallback to end of array if we somehow drop inside a nested matched tree instead of top level
+                if (targetIndex === -1) {
+                    dropIndex = targetSectionNodes.length;
+                } else {
+                    dropIndex = dropPosition === 'before' ? targetIndex : targetIndex + 1;
+                }
+
+                // If dropped into a *different* section's task, we must inherit its date first
+                if (draggedTask.dueDate !== targetDate) {
+                    await actions.updateTask(draggedTaskId, { dueDate: targetDate });
+                    draggedTask = { ...draggedTask, dueDate: targetDate };
+                }
+
             } else {
-                newParentId = targetTask.parentId;
-                const siblings = tasks.filter(t => t.parentId === newParentId).sort((a, b) => a.order - b.order);
-                const targetIndex = siblings.findIndex(t => t.id === targetId);
-                dropIndex = dropPosition === 'before' ? targetIndex : targetIndex + 1;
+                // Standard Hierarchical Tree Drop (No Date Area)
+                if (dropPosition === 'inside') {
+                    newParentId = targetId;
+                    const children = tasks.filter(t => t.parentId === targetId);
+                    dropIndex = children.length;
+                } else {
+                    newParentId = targetTask.parentId;
+                    const siblings = tasks.filter(t => t.parentId === newParentId).sort((a, b) => a.order - b.order);
+                    const targetIndex = siblings.findIndex(t => t.id === targetId);
+                    dropIndex = dropPosition === 'before' ? targetIndex : targetIndex + 1;
+                }
             }
         }
 
-        await actions.reorderSiblings(draggedTaskId, newParentId, dropIndex);
+        if (isFocusDrop) {
+            await actions.reorderInFocus(draggedTaskId, dropIndex);
+        } else if (isSectionDrop) {
+            await actions.reorderInSection(draggedTaskId, draggedTask.dueDate, dropIndex);
+        } else {
+            await actions.reorderSiblings(draggedTaskId, newParentId, dropIndex);
+        }
 
         setDraggedTaskId(null);
         setDropTargetId(null);
         setDropPosition(null);
     };
 
-    const renderNodeList = (nodes: TreeNode[], depth: number) => {
+    const renderNodeList = (nodes: TreeNode[], depth: number, keyPrefix: string = '') => {
         return nodes.map(node => (
             <TaskRow
-                key={node.task.id}
+                key={`${keyPrefix}${node.task.id}`}
+                domId={`task-row-${keyPrefix}${node.task.id}`}
+                onDoubleClick={() => handleDoubleClickToAll(node.task.id)}
                 task={node.task}
                 depth={depth}
                 isOpen={openIds.has(node.task.id)}
@@ -254,7 +395,7 @@ export const TaskTree: React.FC<Props> = ({ tasks, isInbox, searchQuery = '', se
             >
                 {openIds.has(node.task.id) && node.children.length > 0 && (
                     <div className="flex flex-col">
-                        {renderNodeList(node.children, depth + 1)}
+                        {renderNodeList(node.children, depth + 1, keyPrefix)}
                     </div>
                 )}
             </TaskRow>
@@ -284,7 +425,7 @@ export const TaskTree: React.FC<Props> = ({ tasks, isInbox, searchQuery = '', se
                             </div>
                             {openIds.has(g.id) && (
                                 <div className="flex flex-col">
-                                    {renderNodeList(g.nodes, 0)}
+                                    {renderNodeList(g.nodes, 0, `${g.id}-`)}
                                 </div>
                             )}
                         </div>

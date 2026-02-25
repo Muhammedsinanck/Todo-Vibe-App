@@ -42,6 +42,9 @@ export const actions = {
             dueDate,
             tags,
             order: orderToUse,
+            sectionOrder: Date.now(), // High default value sorts to bottom of day
+            isFocused: false,
+            focusOrder: 0,
             createdAt: Date.now(),
         };
 
@@ -149,6 +152,91 @@ export const actions = {
                     newUpdateSnapshot: { order: i }
                 });
                 await db.tasks.update(task.id, { order: i });
+            }
+        }
+
+        if (batchOps.length > 0) {
+            history.push({ type: 'BATCH', batchOperations: batchOps });
+        }
+    },
+
+    async reorderInSection(draggedId: string, targetDate: string | null, dropIndex: number) {
+        const draggedTask = await db.tasks.get(draggedId);
+        if (!draggedTask) return;
+
+        // Find all tasks with this target date
+        let targetTasks: Task[];
+        if (targetDate) {
+            // Note: Our views use startOfDay/endOfDay logic, but for simplicity of DB query we fetch all and sort
+            targetTasks = await db.tasks.toArray();
+            targetTasks = targetTasks.filter(t => t.dueDate === targetDate);
+        } else {
+            targetTasks = await db.tasks.where('dueDate').equals('').or('dueDate').equals('null').toArray(); // Basic fallback
+        }
+
+        const listToReorder = targetTasks
+            .filter(t => t.id !== draggedId)
+            .sort((a, b) => (a.sectionOrder || 0) - (b.sectionOrder || 0));
+
+        // Insert at drop index
+        listToReorder.splice(dropIndex, 0, draggedTask);
+
+        const batchOps: Operation[] = [];
+
+        // Note: Due Date is handled BEFORE calling this if dragging to a new section, 
+        // so we just fix the order values.
+        for (let i = 0; i < listToReorder.length; i++) {
+            const task = listToReorder[i];
+            if (task.sectionOrder !== i) {
+                batchOps.push({
+                    type: 'UPDATE', taskId: task.id,
+                    prevUpdateSnapshot: { sectionOrder: task.sectionOrder },
+                    newUpdateSnapshot: { sectionOrder: i }
+                });
+                await db.tasks.update(task.id, { sectionOrder: i });
+            }
+        }
+
+        if (batchOps.length > 0) {
+            history.push({ type: 'BATCH', batchOperations: batchOps });
+        }
+    },
+
+    async toggleFocus(id: string, isFocused: boolean) {
+        const updates: Partial<Task> = { isFocused };
+        if (isFocused) {
+            // Put it at the bottom of the focus queue by default
+            updates.focusOrder = Date.now();
+        }
+        return this.updateTask(id, updates);
+    },
+
+    async reorderInFocus(draggedId: string, dropIndex: number) {
+        const draggedTask = await db.tasks.get(draggedId);
+        if (!draggedTask) return;
+
+        // Let's grab them safely
+        let allTasks = await db.tasks.toArray();
+        const targetTasks = allTasks.filter(t => t.isFocused);
+
+        const listToReorder = targetTasks
+            .filter(t => t.id !== draggedId)
+            .sort((a, b) => (a.focusOrder || 0) - (b.focusOrder || 0));
+
+        // Insert at drop index
+        listToReorder.splice(dropIndex, 0, draggedTask);
+
+        const batchOps: Operation[] = [];
+
+        for (let i = 0; i < listToReorder.length; i++) {
+            const task = listToReorder[i];
+            if (task.focusOrder !== i) {
+                batchOps.push({
+                    type: 'UPDATE', taskId: task.id,
+                    prevUpdateSnapshot: { focusOrder: task.focusOrder },
+                    newUpdateSnapshot: { focusOrder: i }
+                });
+                await db.tasks.update(task.id, { focusOrder: i });
             }
         }
 

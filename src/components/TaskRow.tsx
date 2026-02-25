@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { type Task } from '../db/db';
 import { actions } from '../db/actions';
-import { Check, ChevronRight, GripVertical, Trash2, Calendar, Tag as TagIcon, FileText } from 'lucide-react';
+import { Check, ChevronRight, GripVertical, Trash2, Calendar, Tag as TagIcon, FileText, Target } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 
@@ -28,13 +28,16 @@ type TaskRowProps = {
     dropPosition: 'before' | 'after' | 'inside' | null;
     setDropPosition: (pos: 'before' | 'after' | 'inside' | null) => void;
     onDrop: (e: React.DragEvent) => void;
+    domId?: string;
+    onDoubleClick?: () => void;
 };
 
 export const TaskRow: React.FC<TaskRowProps> = ({
     task, depth, isOpen, hasChildren, onToggle,
     onKeyDown, onTaskFocus, onUpdateText,
     autoFocusId, onAutoFocusComplete, isSelected, onSelect,
-    children, draggedTaskId, setDraggedTaskId, dropTargetId, setDropTargetId, dropPosition, setDropPosition, onDrop
+    children, draggedTaskId, setDraggedTaskId, dropTargetId, setDropTargetId, dropPosition, setDropPosition, onDrop,
+    domId, onDoubleClick
 }) => {
     const [localText, setLocalText] = useState(task.text);
     const [isFocused, setIsFocused] = useState(false);
@@ -108,7 +111,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
     const isDropTarget = dropTargetId === task.id;
 
     return (
-        <div className="w-full flex flex-col relative" onClick={(e) => {
+        <div id={domId} onDoubleClick={onDoubleClick} className="w-full flex flex-col relative" onClick={(e) => {
             e.stopPropagation();
             onSelect();
         }}>
@@ -126,9 +129,13 @@ export const TaskRow: React.FC<TaskRowProps> = ({
                 onDrop={onDrop}
                 className={clsx(
                     "group flex items-center py-2 px-3 rounded-xl transition-all w-full border backdrop-blur-sm",
-                    isSelected
-                        ? "bg-theme-accent-bg border-theme-accent shadow-[0_2px_10px_rgba(168,85,247,0.1)]"
-                        : "border-transparent hover:bg-theme-hover hover:border-theme-border hover:shadow-sm",
+                    isSelected && task.isFocused
+                        ? "bg-gradient-to-r from-theme-accent-bg to-teal-500/10 border-theme-accent shadow-sm"
+                        : isSelected
+                            ? "bg-theme-accent-bg border-theme-accent shadow-[0_2px_10px_rgba(168,85,247,0.1)]"
+                            : task.isFocused
+                                ? "bg-teal-500/10 border-teal-500/30 hover:bg-teal-500/15 hover:border-teal-500/50 shadow-[0_2px_10px_rgba(20,184,166,0.05)]"
+                                : "border-transparent hover:bg-theme-hover hover:border-theme-border hover:shadow-sm",
                     task.completed && "opacity-60",
                     isDropTarget && dropPosition === 'inside' && "bg-theme-accent-hover border-theme-accent outline outline-2 outline-theme-accent"
                 )}
@@ -162,7 +169,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
                         "flex-none w-5 h-5 rounded-[6px] border-[2px] flex items-center justify-center transition-all mr-3 shadow-sm",
                         task.completed
                             ? "bg-emerald-500 border-emerald-500 text-white"
-                            : "bg-theme-input-bg border-theme-border hover:border-emerald-500"
+                            : "task-checkbox-ring"
                     )}
                 >
                     {task.completed && <Check size={12} strokeWidth={3} />}
@@ -209,18 +216,34 @@ export const TaskRow: React.FC<TaskRowProps> = ({
 
                 {task.dueDate && (
                     <div className="flex-none flex items-center mr-2 text-xs font-semibold text-theme-accent bg-theme-accent-bg border border-theme-accent shadow-sm px-2 py-1 rounded-lg">
-                        {format(new Date(task.dueDate), 'MMM d')}
+                        {format(new Date(task.dueDate + 'T00:00:00'), 'MMM d')}
                     </div>
                 )}
 
                 <div className={clsx(
-                    "flex-none flex items-center transition-opacity ml-2 gap-1 opacity-0 group-hover:opacity-100"
+                    "flex-none flex items-center transition-opacity ml-2 gap-1 relative z-20",
+                    task.isFocused || isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                 )}>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            actions.toggleFocus(task.id, !task.isFocused);
+                        }}
+                        className={clsx(
+                            "p-1.5 rounded-lg transition-colors shadow-sm",
+                            task.isFocused
+                                ? "text-teal-500 bg-teal-500/10 hover:bg-teal-500/20"
+                                : "text-theme-muted hover:text-theme-text hover:bg-theme-hover"
+                        )}
+                        title={task.isFocused ? "Remove from Focus Priority" : "Add to Focus Priority"}
+                    >
+                        <Target size={16} />
+                    </button>
                     <div className="relative w-8 h-8 flex items-center justify-center p-1.5 rounded-lg text-theme-muted hover:text-theme-text hover:bg-theme-hover shadow-sm transition-colors" title="Set Due Date">
                         <Calendar size={16} />
                         <input
                             type="date"
-                            value={task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : ''}
+                            value={task.dueDate || ''}
                             onChange={(e) => actions.updateTask(task.id, { dueDate: e.target.value || null })}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer outline-none"
                             onClick={(e) => e.stopPropagation()}

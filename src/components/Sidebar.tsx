@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { type SectionFilter, type StatusFilter } from '../db/hooks';
-import { ListTodo, Calendar, Clock, Archive, CalendarDays, Sun, Moon, Sparkles } from 'lucide-react';
+import { ListTodo, Calendar, Clock, Archive, CalendarDays, Sun, Moon, Sparkles, Target } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 
@@ -21,6 +21,7 @@ export const Sidebar: React.FC<Props> = ({ currentFilter, onFilterChange, status
     const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString());
 
     const navs = [
+        { id: 'focus', icon: Target, label: 'Focus Priority', color: 'text-teal-500' },
         { id: 'all', icon: ListTodo, label: 'Inbox', color: 'text-purple-600' },
         { id: 'today', icon: Calendar, label: 'Today', color: 'text-emerald-600' },
         { id: 'upcoming', icon: Clock, label: 'Upcoming', color: 'text-blue-600' },

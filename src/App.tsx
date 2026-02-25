@@ -4,22 +4,39 @@ import { history } from './db/history';
 import { TaskTree } from './components/TaskTree';
 import { TaskDetailPanel } from './components/TaskDetailPanel';
 import { useTasks, type SectionFilter } from './db/hooks';
-import { ListTodo, Calendar, Clock, Archive, Search } from 'lucide-react';
+import { ListTodo, Calendar, Clock, Archive, Search, Target } from 'lucide-react';
 import './index.css';
 
 function App() {
   const [filter, setFilter] = useState<SectionFilter>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'incomplete'>('all');
-  const [theme, setTheme] = useState<'light' | 'twilight' | 'midnight'>('midnight');
+  const [theme, setTheme] = useState<'light' | 'twilight' | 'midnight'>(() => {
+    return (localStorage.getItem('theme') as 'light' | 'twilight' | 'midnight') || 'midnight';
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [containerWidth, setContainerWidth] = useState(896); // 896px = max-w-4xl
-  const [rightPanelWidth, setRightPanelWidth] = useState(320); // default w-80 (320px)
+  const [containerWidth, setContainerWidth] = useState(() => {
+    const saved = localStorage.getItem('containerWidth');
+    return saved ? parseInt(saved, 10) : 896; // 896px = max-w-4xl
+  });
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('rightPanelWidth');
+    return saved ? parseInt(saved, 10) : 320; // default w-80 (320px)
+  });
   const tasks = useTasks(filter, statusFilter);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('containerWidth', containerWidth.toString());
+  }, [containerWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('rightPanelWidth', rightPanelWidth.toString());
+  }, [rightPanelWidth]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -44,6 +61,7 @@ function App() {
 
   const getHeader = () => {
     switch (filter) {
+      case 'focus': return { title: 'Focus Priority', icon: <Target className="text-teal-500" /> };
       case 'today': return { title: 'Today', icon: <Calendar className="text-emerald-400" /> };
       case 'upcoming': return { title: 'Upcoming', icon: <Clock className="text-blue-400" /> };
       case 'past': return { title: 'Past & Completed', icon: <Archive className="text-orange-400" /> };
@@ -138,7 +156,9 @@ function App() {
                 <TaskTree
                   tasks={tasks}
                   isInbox={filter === 'all'}
+                  isFocusMode={filter === 'focus'}
                   searchQuery={searchQuery}
+                  onClearSearch={() => setSearchQuery('')}
                   selectedTaskId={selectedTaskId}
                   setSelectedTaskId={setSelectedTaskId}
                 />

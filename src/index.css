@@ -168,3 +168,28 @@ textarea {
   opacity: 0.5;
   background: var(--bg-surface-active);
 }
+
+.task-checkbox-ring {
+  background: var(--theme-glass-solid);
+  border: 2px solid var(--theme-muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+[data-theme="light"] .task-checkbox-ring,
+:root .task-checkbox-ring {
+  border-color: #94a3b8;
+  /* Tailwind slate-400 */
+}
+
+[data-theme="twilight"] .task-checkbox-ring,
+[data-theme="midnight"] .task-checkbox-ring {
+  border-color: #64748b;
+  /* Tailwind slate-500 */
+}
+
+.task-checkbox-ring:hover {
+  border-color: #10b981;
+  /* Emerald 500 */
+  box-shadow: 0 2px 5px rgba(16, 185, 129, 0.2);
+}

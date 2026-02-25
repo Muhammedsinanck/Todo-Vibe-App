@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import { startOfDay, endOfDay, isBefore, isAfter, isWithinInterval } from 'date-fns';
 
-export type SectionFilter = 'all' | 'today' | 'upcoming' | 'past' | 'no-date' | { type: 'dateRange', start: string, end: string } | { type: 'month', year: number, month: number } | { type: 'year', year: number };
+export type SectionFilter = 'all' | 'today' | 'upcoming' | 'past' | 'no-date' | 'focus' | { type: 'dateRange', start: string, end: string } | { type: 'month', year: number, month: number } | { type: 'year', year: number };
 
 export type StatusFilter = 'all' | 'completed' | 'incomplete';
 
@@ -28,6 +28,13 @@ export function useTasks(filter: SectionFilter, statusFilter: StatusFilter = 'al
             const parts = dStr.split('-');
             return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
         };
+
+        if (filter === 'focus') {
+            return tasks
+                .filter(t => t.isFocused)
+                // Override default sorting to use specific focusOrder
+                .sort((a, b) => (a.focusOrder || 0) - (b.focusOrder || 0));
+        }
 
         if (filter === 'all') {
             return tasks;
