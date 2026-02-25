@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-theme-bg: var(--theme-bg);
+  --color-theme-text: var(--theme-text);
+  --color-theme-text-inv: var(--theme-text-inv);
+  --color-theme-muted: var(--theme-muted);
+  --color-theme-glass: var(--theme-glass);
+  --color-theme-glass-solid: var(--theme-glass-solid);
+  --color-theme-glass-border: var(--theme-glass-border);
+  --color-theme-hover: var(--theme-hover);
+  --color-theme-border: var(--theme-border);
+  --color-theme-accent: var(--theme-accent);
+  --color-theme-accent-bg: var(--theme-accent-bg);
+}
+
+:root,
+[data-theme="light"] {
+  --theme-bg: #fdfcff;
+  --theme-bg-mesh: radial-gradient(at 0% 0%, hsla(253, 100%, 93%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 100%, 94%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 100%, 94%, 1) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, hsla(180, 100%, 92%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, hsla(280, 100%, 95%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 50%, hsla(350, 100%, 93%, 1) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, hsla(311, 100%, 92%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, hsla(210, 100%, 94%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(30, 100%, 92%, 1) 0px, transparent 50%);
+  --theme-text: #0f172a;
+  --theme-text-inv: #ffffff;
+  --theme-muted: #64748b;
+  --theme-glass: rgba(255, 255, 255, 0.6);
+  --theme-glass-solid: rgba(255, 255, 255, 0.85);
+  --theme-glass-border: rgba(255, 255, 255, 0.5);
+  --theme-hover: rgba(255, 255, 255, 0.5);
+  --theme-border: rgba(0, 0, 0, 0.05);
+  --theme-accent: #a855f7;
+  --theme-accent-bg: rgba(168, 85, 247, 0.1);
+  --theme-panel-shadow: 0 12px 40px rgba(31, 38, 135, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="twilight"] {
+  --theme-bg: #0f172a;
+  --theme-bg-mesh: radial-gradient(at 0% 0%, hsla(253, 60%, 15%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 60%, 12%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 40%, 15%, 1) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, hsla(180, 50%, 12%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, hsla(280, 60%, 15%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 50%, hsla(350, 40%, 16%, 1) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, hsla(311, 50%, 14%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, hsla(210, 60%, 16%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(30, 40%, 12%, 1) 0px, transparent 50%);
+  --theme-text: #f8fafc;
+  --theme-text-inv: #0f172a;
+  --theme-muted: #94a3b8;
+  --theme-glass: rgba(30, 41, 59, 0.6);
+  --theme-glass-solid: rgba(15, 23, 42, 0.85);
+  --theme-glass-border: rgba(255, 255, 255, 0.08);
+  --theme-hover: rgba(255, 255, 255, 0.03);
+  --theme-border: rgba(255, 255, 255, 0.08);
+  --theme-accent: #c084fc;
+  --theme-accent-bg: rgba(192, 132, 252, 0.15);
+  --theme-panel-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="midnight"] {
+  --theme-bg: #020617;
+  --theme-bg-mesh: radial-gradient(at 0% 0%, hsla(253, 30%, 5%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 30%, 4%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 20%, 5%, 1) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, hsla(180, 25%, 3%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, hsla(280, 30%, 5%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 50%, hsla(350, 20%, 4%, 1) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, hsla(311, 25%, 4%, 1) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, hsla(210, 30%, 5%, 1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(30, 20%, 3%, 1) 0px, transparent 50%);
+  --theme-text: #f1f5f9;
+  --theme-text-inv: #020617;
+  --theme-muted: #64748b;
+  --theme-glass: rgba(2, 6, 23, 0.8);
+  --theme-glass-solid: rgba(2, 6, 23, 0.95);
+  --theme-glass-border: rgba(255, 255, 255, 0.05);
+  --theme-hover: rgba(255, 255, 255, 0.02);
+  --theme-border: rgba(255, 255, 255, 0.05);
+  --theme-accent: #a855f7;
+  --theme-accent-bg: rgba(168, 85, 247, 0.1);
+  --theme-panel-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
+}
+
+body {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--theme-bg);
+  background-image: var(--theme-bg-mesh);
+  background-attachment: fixed;
+  color: var(--theme-text);
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+input,
+button,
+textarea {
+  font-family: inherit;
+  outline: none;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+::selection {
+  background: rgba(123, 97, 255, 0.2);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.glass-panel {
+  background: var(--theme-glass);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid var(--theme-glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--theme-panel-shadow);
+  transition: background 0.4s ease, border-color 0.4s ease;
+}
+
+.animate-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tree specific */
+.tree-root {
+  width: 100%;
+}
+
+.tree-dragging {
+  opacity: 0.5;
+  background: var(--bg-surface-active);
+}
