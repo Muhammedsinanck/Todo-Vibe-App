@@ -1,7 +1,30 @@
-import { db, type Task } from './db';
+import {
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    writeBatch
+} from "firebase/firestore";
+import { db, auth, type Task } from './db';
 import { history, type Operation } from './history';
 
 const generateId = () => crypto.randomUUID();
+
+const getUserId = () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("User not authenticated");
+    return uid;
+};
+
+const getTasksCollection = () => {
+    const uid = getUserId();
+    return collection(db, "users", uid, "tasks");
+};
 
 export const actions = {
     async addTask(
@@ -11,9 +34,17 @@ export const actions = {
         dueDate: string | null = null,
         insertAfterOrder?: number
     ) {
+        const uid = getUserId();
+        const tasksRef = getTasksCollection();
         let orderToUse: number;
-        const siblings = await db.tasks.where('parentId').equals(parentId).toArray();
-        let batchOps: Operation[] = [];
+
+        // Find siblings
+        const q = query(tasksRef, where("parentId", "==", parentId));
+        const querySnapshot = await getDocs(q);
+        const siblings = querySnapshot.docs.map(d => d.data() as Task);
+
+        const batchOps: Operation[] = [];
+        const fbatch = writeBatch(db);
 
         if (insertAfterOrder !== undefined) {
             orderToUse = insertAfterOrder + 1;
@@ -26,7 +57,8 @@ export const actions = {
                     prevUpdateSnapshot: { order: sib.order },
                     newUpdateSnapshot: { order: newOrder }
                 });
-                await db.tasks.update(sib.id, { order: newOrder });
+                const sibRef = doc(tasksRef, sib.id);
+                fbatch.update(sibRef, { order: newOrder });
             }
         } else {
             const maxOrder = Math.max(0, ...siblings.map(s => s.order));
@@ -42,24 +74,30 @@ export const actions = {
             dueDate,
             tags,
             order: orderToUse,
-            sectionOrder: Date.now(), // High default value sorts to bottom of day
+            sectionOrder: Date.now(),
             isFocused: false,
             focusOrder: 0,
             createdAt: Date.now(),
+            userId: uid
         };
 
         batchOps.push({ type: 'ADD', taskId: newTask.id, taskSnapshot: newTask });
-        await db.tasks.add(newTask);
+        const newRef = doc(tasksRef, newTask.id);
+        fbatch.set(newRef, newTask);
 
+        await fbatch.commit();
         history.push({ type: 'BATCH', batchOperations: batchOps });
         return newTask;
     },
 
     async updateTask(id: string, updates: Partial<Task>) {
-        const existing = await db.tasks.get(id);
-        if (!existing) return;
+        const tasksRef = getTasksCollection();
+        const taskRef = doc(tasksRef, id);
+        const snap = await getDoc(taskRef);
 
-        // Extract only the fields being changed for snapshotting
+        if (!snap.exists()) return;
+        const existing = snap.data() as Task;
+
         const prevSnapshot: Partial<Task> = {};
         for (const key of Object.keys(updates) as Array<keyof Task>) {
             // @ts-ignore
@@ -73,7 +111,7 @@ export const actions = {
             newUpdateSnapshot: updates
         });
 
-        return db.tasks.update(id, updates);
+        await updateDoc(taskRef, updates);
     },
 
     async toggleTaskCompletion(id: string, completed: boolean) {
@@ -81,49 +119,65 @@ export const actions = {
     },
 
     async deleteTask(id: string) {
+        const tasksRef = getTasksCollection();
         const toDeleteIds = [id];
         let index = 0;
 
         // BFS to find all children recursively
         while (index < toDeleteIds.length) {
             const currentId = toDeleteIds[index];
-            const children = await db.tasks.where('parentId').equals(currentId).toArray();
-            for (const child of children) {
-                toDeleteIds.push(child.id);
+            const q = query(tasksRef, where("parentId", "==", currentId));
+            const querySnapshot = await getDocs(q);
+            for (const childDoc of querySnapshot.docs) {
+                toDeleteIds.push(childDoc.id);
             }
             index++;
         }
 
-        const tasksToDelete = await db.tasks.where('id').anyOf(toDeleteIds).toArray();
-        const batchOps: Operation[] = tasksToDelete.map(t => ({
-            type: 'DELETE',
-            taskId: t.id,
-            taskSnapshot: t
-        }));
+        const batchOps: Operation[] = [];
+        const fbatch = writeBatch(db);
+
+        // Firebase where 'in' max is 10, so fetch each snapshot individually for history
+        for (const delId of toDeleteIds) {
+            const docRef = doc(tasksRef, delId);
+            const snap = await getDoc(docRef);
+            if (snap.exists()) {
+                batchOps.push({
+                    type: 'DELETE',
+                    taskId: delId,
+                    taskSnapshot: snap.data() as Task
+                });
+                fbatch.delete(docRef);
+            }
+        }
 
         history.push({ type: 'BATCH', batchOperations: batchOps });
-        await db.tasks.bulkDelete(toDeleteIds);
+        await fbatch.commit();
     },
 
     async reorderSiblings(draggedId: string, newParentId: string, dropIndex: number) {
-        const draggedTask = await db.tasks.get(draggedId);
-        if (!draggedTask) return;
+        const tasksRef = getTasksCollection();
+        const draggedRef = doc(tasksRef, draggedId);
+        const snap = await getDoc(draggedRef);
+        if (!snap.exists()) return;
 
+        const draggedTask = snap.data() as Task;
         const originalParent = draggedTask.parentId;
         const originalOrder = draggedTask.order;
 
-        // Get all siblings in target parent (excluding the dragged item if it was already there)
-        const targetSiblings = await db.tasks.where('parentId').equals(newParentId).toArray();
+        const q = query(tasksRef, where("parentId", "==", newParentId));
+        const querySnapshot = await getDocs(q);
+        const targetSiblings = querySnapshot.docs.map(d => d.data() as Task);
+
         const listToReorder = targetSiblings
             .filter(t => t.id !== draggedId)
             .sort((a, b) => a.order - b.order);
 
-        // Splice the dragged item into the exact new drop index position
         listToReorder.splice(dropIndex, 0, draggedTask);
 
         const batchOps: Operation[] = [];
+        const fbatch = writeBatch(db);
 
-        // Update the dragged item's parent if changed
         if (originalParent !== newParentId) {
             batchOps.push({
                 type: 'UPDATE',
@@ -131,60 +185,62 @@ export const actions = {
                 prevUpdateSnapshot: { parentId: originalParent },
                 newUpdateSnapshot: { parentId: newParentId }
             });
-            await db.tasks.update(draggedId, { parentId: newParentId });
+            fbatch.update(draggedRef, { parentId: newParentId });
         }
 
-        // Re-assign ascending order values to everything in the spliced array
         for (let i = 0; i < listToReorder.length; i++) {
             const task = listToReorder[i];
-            // Only update DB/History if order actually changed
             if (task.id === draggedId && originalOrder !== i) {
                 batchOps.push({
                     type: 'UPDATE', taskId: task.id,
                     prevUpdateSnapshot: { order: originalOrder },
                     newUpdateSnapshot: { order: i }
                 });
-                await db.tasks.update(task.id, { order: i });
+                fbatch.update(doc(tasksRef, task.id), { order: i });
             } else if (task.id !== draggedId && task.order !== i) {
                 batchOps.push({
                     type: 'UPDATE', taskId: task.id,
                     prevUpdateSnapshot: { order: task.order },
                     newUpdateSnapshot: { order: i }
                 });
-                await db.tasks.update(task.id, { order: i });
+                fbatch.update(doc(tasksRef, task.id), { order: i });
             }
         }
 
         if (batchOps.length > 0) {
             history.push({ type: 'BATCH', batchOperations: batchOps });
+            await fbatch.commit();
         }
     },
 
     async reorderInSection(draggedId: string, targetDate: string | null, dropIndex: number) {
-        const draggedTask = await db.tasks.get(draggedId);
-        if (!draggedTask) return;
+        const tasksRef = getTasksCollection();
+        const draggedRef = doc(tasksRef, draggedId);
+        const snap = await getDoc(draggedRef);
+        if (!snap.exists()) return;
+        const draggedTask = snap.data() as Task;
 
-        // Find all tasks with this target date
-        let targetTasks: Task[];
+        let targetTasks: Task[] = [];
         if (targetDate) {
-            // Note: Our views use startOfDay/endOfDay logic, but for simplicity of DB query we fetch all and sort
-            targetTasks = await db.tasks.toArray();
-            targetTasks = targetTasks.filter(t => t.dueDate === targetDate);
+            // Need all tasks to filter appropriately or simplify query
+            // Let's just fetch all and filter in memory to keep behavior identical
+            const allSnap = await getDocs(tasksRef);
+            targetTasks = allSnap.docs.map(d => d.data() as Task).filter(t => t.dueDate === targetDate);
         } else {
-            targetTasks = await db.tasks.where('dueDate').equals('').or('dueDate').equals('null').toArray(); // Basic fallback
+            // Null or empty
+            const allSnap = await getDocs(tasksRef);
+            targetTasks = allSnap.docs.map(d => d.data() as Task).filter(t => !t.dueDate);
         }
 
         const listToReorder = targetTasks
             .filter(t => t.id !== draggedId)
             .sort((a, b) => (a.sectionOrder || 0) - (b.sectionOrder || 0));
 
-        // Insert at drop index
         listToReorder.splice(dropIndex, 0, draggedTask);
 
         const batchOps: Operation[] = [];
+        const fbatch = writeBatch(db);
 
-        // Note: Due Date is handled BEFORE calling this if dragging to a new section, 
-        // so we just fix the order values.
         for (let i = 0; i < listToReorder.length; i++) {
             const task = listToReorder[i];
             if (task.sectionOrder !== i) {
@@ -193,40 +249,43 @@ export const actions = {
                     prevUpdateSnapshot: { sectionOrder: task.sectionOrder },
                     newUpdateSnapshot: { sectionOrder: i }
                 });
-                await db.tasks.update(task.id, { sectionOrder: i });
+                fbatch.update(doc(tasksRef, task.id), { sectionOrder: i });
             }
         }
 
         if (batchOps.length > 0) {
             history.push({ type: 'BATCH', batchOperations: batchOps });
+            await fbatch.commit();
         }
     },
 
     async toggleFocus(id: string, isFocused: boolean) {
         const updates: Partial<Task> = { isFocused };
         if (isFocused) {
-            // Put it at the bottom of the focus queue by default
             updates.focusOrder = Date.now();
         }
         return this.updateTask(id, updates);
     },
 
     async reorderInFocus(draggedId: string, dropIndex: number) {
-        const draggedTask = await db.tasks.get(draggedId);
-        if (!draggedTask) return;
+        const tasksRef = getTasksCollection();
+        const draggedRef = doc(tasksRef, draggedId);
+        const snap = await getDoc(draggedRef);
+        if (!snap.exists()) return;
+        const draggedTask = snap.data() as Task;
 
-        // Let's grab them safely
-        let allTasks = await db.tasks.toArray();
-        const targetTasks = allTasks.filter(t => t.isFocused);
+        const q = query(tasksRef, where("isFocused", "==", true));
+        const allSnap = await getDocs(q);
+        const targetTasks = allSnap.docs.map(d => d.data() as Task);
 
         const listToReorder = targetTasks
             .filter(t => t.id !== draggedId)
             .sort((a, b) => (a.focusOrder || 0) - (b.focusOrder || 0));
 
-        // Insert at drop index
         listToReorder.splice(dropIndex, 0, draggedTask);
 
         const batchOps: Operation[] = [];
+        const fbatch = writeBatch(db);
 
         for (let i = 0; i < listToReorder.length; i++) {
             const task = listToReorder[i];
@@ -236,23 +295,29 @@ export const actions = {
                     prevUpdateSnapshot: { focusOrder: task.focusOrder },
                     newUpdateSnapshot: { focusOrder: i }
                 });
-                await db.tasks.update(task.id, { focusOrder: i });
+                fbatch.update(doc(tasksRef, task.id), { focusOrder: i });
             }
         }
 
         if (batchOps.length > 0) {
             history.push({ type: 'BATCH', batchOperations: batchOps });
+            await fbatch.commit();
         }
     },
 
     async getAllTags() {
-        const tasks = await db.tasks.toArray();
-        const tags = new Set<string>();
-        for (const task of tasks) {
-            for (const tag of task.tags) {
-                tags.add(tag);
-            }
+        // Need to catch errors here if user is not logged in since sidebar renders immediately
+        try {
+            const tasksRef = getTasksCollection();
+            const allSnap = await getDocs(tasksRef);
+            const tags = new Set<string>();
+            allSnap.docs.forEach(d => {
+                const task = d.data() as Task;
+                (task.tags || []).forEach(tag => tags.add(tag));
+            });
+            return Array.from(tags).sort();
+        } catch (e) {
+            return [];
         }
-        return Array.from(tags).sort();
     }
 };

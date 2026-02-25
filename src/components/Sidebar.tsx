@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { type SectionFilter, type StatusFilter } from '../db/hooks';
-import { ListTodo, Calendar, Clock, Archive, CalendarDays, Sun, Moon, Sparkles, Target } from 'lucide-react';
+import { ListTodo, Calendar, Clock, Archive, CalendarDays, Sun, Moon, Sparkles, Target, LogOut } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
+import { auth } from '../db/firebase';
+import { signOut } from 'firebase/auth';
 
 type Props = {
     currentFilter: SectionFilter;
@@ -151,6 +153,16 @@ export const Sidebar: React.FC<Props> = ({ currentFilter, onFilterChange, status
                         <button onClick={() => onThemeChange('twilight')} className={clsx("flex-1 p-2 rounded-lg flex justify-center border transition-colors", theme === 'twilight' ? "bg-theme-accent-bg border-theme-accent text-theme-accent" : "border-theme-glass-border text-theme-muted hover:bg-theme-hover")} title="Twilight"><Sparkles size={18} /></button>
                         <button onClick={() => onThemeChange('midnight')} className={clsx("flex-1 p-2 rounded-lg flex justify-center border transition-colors", theme === 'midnight' ? "bg-theme-accent-bg border-theme-accent text-theme-accent" : "border-theme-glass-border text-theme-muted hover:bg-theme-hover")} title="Midnight"><Moon size={18} /></button>
                     </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-theme-glass-border">
+                    <button
+                        onClick={() => signOut(auth)}
+                        className="w-full flex items-center justify-center gap-2 p-2 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors text-sm font-medium"
+                    >
+                        <LogOut size={16} />
+                        Sign Out
+                    </button>
                 </div>
             </nav>
         </aside>

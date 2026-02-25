@@ -1,4 +1,5 @@
-import { db, type Task } from './db';
+import { doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { db, auth, type Task } from './db';
 
 // History operations definition
 // ADD: To undo, we delete. To redo, we add back.
@@ -24,6 +25,12 @@ class HistoryManager {
     private redoStack: Operation[] = [];
     // Can optionally subscribe UI to changes if we want Undo/Redo buttons to enable/disable
     public listeners: (() => void)[] = [];
+
+    private getDocRef(taskId: string) {
+        const uid = auth.currentUser?.uid;
+        if (!uid) throw new Error("No authenticated user");
+        return doc(db, 'users', uid, 'tasks', taskId);
+    }
 
     push(op: Operation) {
         this.undoStack.push(op);
@@ -55,17 +62,17 @@ class HistoryManager {
         switch (op.type) {
             case 'ADD':
                 if (op.taskId) {
-                    await db.tasks.delete(op.taskId);
+                    await deleteDoc(this.getDocRef(op.taskId));
                 }
                 break;
             case 'DELETE':
-                if (op.taskSnapshot) {
-                    await db.tasks.add(op.taskSnapshot);
+                if (op.taskId && op.taskSnapshot) {
+                    await setDoc(this.getDocRef(op.taskId), op.taskSnapshot);
                 }
                 break;
             case 'UPDATE':
                 if (op.taskId && op.prevUpdateSnapshot) {
-                    await db.tasks.update(op.taskId, op.prevUpdateSnapshot);
+                    await updateDoc(this.getDocRef(op.taskId), op.prevUpdateSnapshot);
                 }
                 break;
             case 'BATCH':
@@ -82,18 +89,18 @@ class HistoryManager {
     private async applyForward(op: Operation) {
         switch (op.type) {
             case 'ADD':
-                if (op.taskSnapshot) {
-                    await db.tasks.add(op.taskSnapshot);
+                if (op.taskId && op.taskSnapshot) {
+                    await setDoc(this.getDocRef(op.taskId), op.taskSnapshot);
                 }
                 break;
             case 'DELETE':
                 if (op.taskId) {
-                    await db.tasks.delete(op.taskId);
+                    await deleteDoc(this.getDocRef(op.taskId));
                 }
                 break;
             case 'UPDATE':
                 if (op.taskId && op.newUpdateSnapshot) {
-                    await db.tasks.update(op.taskId, op.newUpdateSnapshot);
+                    await updateDoc(this.getDocRef(op.taskId), op.newUpdateSnapshot);
                 }
                 break;
             case 'BATCH':

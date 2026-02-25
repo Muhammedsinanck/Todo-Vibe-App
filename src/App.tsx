@@ -5,6 +5,9 @@ import { TaskTree, type TaskTreeHandle } from './components/TaskTree';
 import { TaskDetailPanel } from './components/TaskDetailPanel';
 import { useTasks, type SectionFilter } from './db/hooks';
 import { ListTodo, Calendar, Clock, Archive, Search, Target, Plus } from 'lucide-react';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth } from './db/firebase';
+import { AuthLogin } from './components/AuthLogin';
 import './index.css';
 
 function App() {
@@ -25,6 +28,8 @@ function App() {
   });
   const tasks = useTasks(filter, statusFilter);
   const taskTreeRef = useRef<TaskTreeHandle>(null);
+
+  const [user, authLoading] = useAuthState(auth);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -60,8 +65,8 @@ function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  const getHeader = () => {
-    switch (filter) {
+  const getHeaderForFilter = (currentFilter: SectionFilter) => {
+    switch (currentFilter) {
       case 'focus': return { title: 'Focus Priority', icon: <Target className="text-teal-500" /> };
       case 'today': return { title: 'Today', icon: <Calendar className="text-emerald-400" /> };
       case 'upcoming': return { title: 'Upcoming', icon: <Clock className="text-blue-400" /> };
@@ -71,7 +76,19 @@ function App() {
     }
   };
 
-  const header = getHeader();
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-theme-bg flex items-center justify-center text-theme-muted">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthLogin />;
+  }
+
+  const header = getHeaderForFilter(filter);
 
   return (
     <div className="flex h-screen text-theme-text font-sans overflow-hidden">
